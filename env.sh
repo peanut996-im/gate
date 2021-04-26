@@ -7,7 +7,7 @@ olddir=${PWD}
 repository=${PWD##*/}
 echo "env setting"
 
-packages=("frameworkGo")
+packages=("framework")
 
 for package in ${packages[@]}; do
         cd ../
