@@ -15,4 +15,4 @@ bash ./build.sh $targetos
 echo "./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4"
 echo "run $appName..."
 echo 
-./bin/$appName -c ./etc/config-local.yaml $1 $2 $3 $4
+./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4
