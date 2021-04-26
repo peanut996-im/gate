@@ -9,7 +9,7 @@ if [[ $targetos == "mingw"* ]];then
 targetos="windows"
 fi
 
-bash ./env.sh
+
 bash ./build.sh $targetos
 
 echo "./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4"

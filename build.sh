@@ -18,6 +18,7 @@ fi
 targetos=$1
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+bash ./env.sh
 bash ./mod.sh
 
 appName=${PWD##*/}
