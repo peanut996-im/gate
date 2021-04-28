@@ -53,6 +53,7 @@ echo ""
 BuildFlags='-X "main.BuildVersion='${BuildVersion}'" -X "main.BuildUser='${BuildUser}'" -X "main.BuildTime='${BuildTime}'" -X "main.BuildMachine='${BuildMachine}'"'
 
 ## build
+echo "start go build..."
 go build  -ldflags "${BuildFlags}" -o ../bin/${appName} .
 
 if [ ${targetos} = "windows" ];then
