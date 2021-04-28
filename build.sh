@@ -44,17 +44,20 @@ BuildMachine="$(uname -n)@${BuildMachine}"
 rm -f ./bin/*${appName}*
 cd ./src
 
+echo "BuildInfo:"
 echo "BuildVersion=${BuildVersion}"
 echo "BuildUser=${BuildUser}"
 echo "BuildTime=${BuildTime}"
 echo "BuildMachine=${BuildMachine}"
-echo ""
-
+echo 
 BuildFlags='-X "main.BuildVersion='${BuildVersion}'" -X "main.BuildUser='${BuildUser}'" -X "main.BuildTime='${BuildTime}'" -X "main.BuildMachine='${BuildMachine}'"'
 
 ## build
-echo "start go build..."
+echo "go build start..."
 go build  -ldflags "${BuildFlags}" -o ../bin/${appName} .
+echo "go build done"
+echo
+
 
 if [ ${targetos} = "windows" ];then
     cd ../bin

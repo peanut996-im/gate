@@ -90,10 +90,10 @@ for replace in ${go_mod_replace[@]};do
 done
 cd ../
 
-echo "go mod tidy"
+echo "go mod tidy..."
 cd ./src
 go mod tidy
 cd ../
 
-echo "go mod done..."
+echo "go mod done"
 echo

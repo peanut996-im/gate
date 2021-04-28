@@ -12,7 +12,6 @@ fi
 
 bash ./build.sh $targetos
 
-echo "./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4"
-echo "run $appName..."
-echo 
+echo "run $appName: ./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4"
+echo ""
 ./bin/$appName -c ./etc/config.yaml $1 $2 $3 $4
