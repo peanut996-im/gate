@@ -10,7 +10,10 @@ import (
 )
 
 var (
-	BuildVersion, BuildTime, BuildUser, BuildMachine string
+	BuildTime    string
+	BuildUser    string
+	BuildMachine string
+	BuildVersion string
 )
 
 func main() {

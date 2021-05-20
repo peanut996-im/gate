@@ -2,8 +2,6 @@ package app
 
 import (
 	"framework/cfgargs"
-	"framework/db"
-	"framework/logger"
 	"gate/server"
 	"sync"
 )
@@ -27,13 +25,8 @@ func GetApp() *App {
 }
 
 func (a *App) Init(cfg *cfgargs.SrvConfig) {
-	// db
-	db.InitRedisClient(cfg)
-	err := db.InitMongoClient(cfg)
-	if err != nil {
-		logger.Fatal("init mongo db err: %v", err)
-		return
-	}
+
+	//socket.io
 	a.srv = server.NewServer()
-	a.srv.InitSocketIO(cfg)
+	a.srv.Init(cfg)
 }
