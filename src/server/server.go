@@ -2,16 +2,18 @@ package server
 
 import (
 	"fmt"
-	"framework/agent/logic"
-	"framework/api"
-	"framework/cfgargs"
-	"framework/logger"
-	"framework/net"
-	"gate/handler"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"framework/agent/logic"
+	"framework/api"
+	"framework/api/model"
+	"framework/cfgargs"
+	"framework/encoding"
+	"framework/logger"
+	"gate/handler"
 
 	sio "github.com/googollee/go-socket.io"
 )
@@ -48,21 +50,26 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
 	if sign != vals.Get("sign") {
 		logger.Info("Session[%v]'s  sign: %v", session.ToString(), sign)
-		return net.ERROR_SIGN_INVAILD
+		return api.ERROR_SIGN_INVAILD
 	}
 	if nil != err {
 		logger.Info("parse token failed, err: %v", err)
-		return net.ERROR_TOKEN_INVALID
+		return api.ERROR_TOKEN_INVALID
 	}
 
 	t := vals.Get("token")
-	u, err := s.logicAgent.Auth(t)
+	i, err := s.logicAgent.Auth(t)
 	if err != nil {
 		logger.Info("token not valid, session:[%v], err:[%v]", session.ToString(), error)
-		return net.ERROR_TOKEN_INVALID
+		return api.ERROR_TOKEN_INVALID
 	}
 	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
-
+	u := &model.User{}
+	err = encoding.MapToStruct(i.(map[string]interface{}), &u)
+	if err != nil {
+		logger.Error("Session.Save map to struct failed. err: %v", err)
+		return api.ERROR_TOKEN_INVALID
+	}
 	session.uid = u.UID
 	s.Lock()
 	s.SocketIOToSessions[session.sid] = session
@@ -70,7 +77,7 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	s.Unlock()
 
 	logger.Info("Session.Accept done. Session[%v]", session.ToString())
-	return net.ERROR_CODE_OK
+	return api.ERROR_CODE_OK
 
 }
 
@@ -193,14 +200,17 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 
 	s.OnConnect(func(conn sio.Conn) error {
 		logger.Info("socket.io connected, socket id :%v", conn.ID())
-		err := s.AcceptSession(NewSession(conn), conn.URL().RawQuery)
-		conn.Emit("auth", net.NewBaseResponse(err, nil))
-		if err != net.ERROR_CODE_OK {
+		si := NewSession(conn)
+		err := s.AcceptSession(si, conn.URL().RawQuery)
+		conn.Emit("auth", api.NewBaseResponse(err, nil))
+		if err != api.ERROR_CODE_OK {
 			go func() {
-				<-time.After(2 * time.Second)
+				//Reconnect time
+				<-time.After(20 * time.Second)
 				conn.Close()
 			}()
 		}
+		go s.PushInitData(si)
 		return nil
 	})
 
@@ -229,4 +239,13 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 
 	// run
 	go s.Run(cfg) //nolint: errcheck
+}
+
+//PushLoadData push init data
+func (s *Server) PushInitData(si *Session) {
+	data, err := s.logicAgent.LoadInitData(si.uid)
+	if err != nil {
+		return
+	}
+	si.Push("load", data)
 }

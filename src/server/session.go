@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"framework/api"
+	"framework/api/model"
 	"framework/logger"
 
 	sio "github.com/googollee/go-socket.io"
@@ -44,7 +45,7 @@ func (s *Session) UIDSceneString() string {
 	return fmt.Sprintf("uid:%v_scene:%v", s.uid, s.scene)
 }
 
-func (s *Session) Auth(token string) (*api.User, error) {
+func (s *Session) Auth(token string) (*model.User, error) {
 	//todo move auth to logic
 	resp, err := api.CheckToken(token)
 	if err != nil {
@@ -59,4 +60,8 @@ func (s *Session) Auth(token string) (*api.User, error) {
 
 func (s *Session) ToString() string {
 	return ToString(s.Conn)
+}
+
+func (s *Session) Push(event string, data interface{}) {
+	s.Conn.Emit(event, data)
 }
