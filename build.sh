@@ -45,17 +45,18 @@ rm -f ./bin/*${appName}*
 cd ./src
 
 echo "BuildInfo:"
+echo "BuildApp=${appName}"
 echo "BuildVersion=${BuildVersion}"
 echo "BuildUser=${BuildUser}"
 echo "BuildTime=${BuildTime}"
 echo "BuildMachine=${BuildMachine}"
-echo 
+echo
 BuildFlags='-X "main.BuildVersion='${BuildVersion}'" -X "main.BuildUser='${BuildUser}'" -X "main.BuildTime='${BuildTime}'" -X "main.BuildMachine='${BuildMachine}'"'
 
 ## build
-echo "go build start..."
+echo "go build ${appName} start..."
 go build  -ldflags "${BuildFlags}" -o ../bin/${appName} .
-echo "go build done"
+echo "go build ${appName} done"
 echo
 
 
