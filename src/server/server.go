@@ -1,12 +1,8 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
-	"sync"
-	"time"
-
 	"framework/agent/logic"
 	"framework/api"
 	"framework/api/model"
@@ -14,8 +10,11 @@ import (
 	"framework/encoding"
 	"framework/logger"
 	"gate/handler"
-
 	sio "github.com/googollee/go-socket.io"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
 )
 
 type Server struct {
@@ -45,40 +44,54 @@ func NewServer() *Server {
 	return s
 }
 
-func (s *Server) AcceptSession(session *Session, query string) (error int) {
-	vals, err := url.ParseQuery(query)
-	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
-	if sign != vals.Get("sign") {
-		logger.Info("Session[%v]'s  sign: %v", session.ToString(), sign)
-		return api.ERROR_SIGN_INVAILD
-	}
-	if nil != err {
-		logger.Info("parse token failed, err: %v", err)
-		return api.ERROR_TOKEN_INVALID
-	}
+func (s *Server) Init(cfg *cfgargs.SrvConfig) {
+	// rpc by http
+	s.logicAgent = logic.NewLogicAgentHttp()
+	s.logicAgent.Init(cfg)
+	// sio srv init
 
-	t := vals.Get("token")
-	i, err := s.logicAgent.Auth(t)
-	if err != nil {
-		logger.Info("token not valid, session:[%v], err:[%v]", session.ToString(), error)
-		return api.ERROR_TOKEN_INVALID
-	}
-	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
-	u := &model.User{}
-	err = encoding.MapToStruct(i.(map[string]interface{}), &u)
-	if err != nil {
-		logger.Error("Session.Save map to struct failed. err: %v", err)
-		return api.ERROR_TOKEN_INVALID
-	}
-	session.uid = u.UID
-	s.Lock()
-	s.SocketIOToSessions[session.sid] = session
-	s.UIDToSessions[session.uid] = session
-	s.Unlock()
+	s.OnConnect(func(conn sio.Conn) error {
+		logger.Info("socket.io connected, socket id :%v", conn.ID())
+		si := NewSession(conn)
+		err := s.AcceptSession(si, conn.URL().RawQuery)
+		conn.Emit("auth", api.NewBaseResponse(err, nil))
+		if err != api.ERROR_CODE_OK {
+			go func() {
+				//Reconnect time
+				<-time.After(20 * time.Second)
+				conn.Close()
+			}()
+		} else {
+			go s.PushInitData(si)
+		}
+		return nil
+	})
 
-	logger.Info("Session.Accept done. Session[%v]", session.ToString())
-	return api.ERROR_CODE_OK
+	s.OnDisconnect(func(conn sio.Conn, message string) {
+		logger.Info("socket.io disconnected, socket id :%v", conn.ID())
+		s.Lock()
+		si, _ := s.SocketIOToSessions[conn.ID()]
+		if nil != si {
+			logger.Info("Session disconnected, session[%v]", si.ToString())
+			delete(s.SocketIOToSessions, conn.ID())
+		}
 
+		s.Unlock()
+	})
+
+	s.OnError(func(conn sio.Conn, err error) {
+		logger.Error("socket.io on err: %v, id: %v", err, conn.ID())
+	})
+
+	// mount handlers
+	handlers := NewSIOHandlers()
+	handlers["console"] = handler.Console
+	handlers["chat"] = handler.Chat
+	handlers["pingpong"] = handler.Ping
+	s.MountHandlers("/", handlers)
+
+	// run
+	go s.Run(cfg) //nolint: errcheck
 }
 
 func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
@@ -192,56 +205,53 @@ func (s *Server) SetNameSpace(nsp string) {
 	s.nsp = nsp
 }
 
-func (s *Server) Init(cfg *cfgargs.SrvConfig) {
-	// rpc by http
-	s.logicAgent = logic.NewLogicAgentHttp()
-	s.logicAgent.Init(cfg)
-	// sio srv init
+//AcceptSession authentication for session
+func (s *Server) AcceptSession(session *Session, query string) (error int) {
+	vals, err := url.ParseQuery(query)
+	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
+	if sign != vals.Get("sign") {
+		logger.Info("Session[%v]'s  sign: %v", session.ToString(), sign)
+		return api.ERROR_SIGN_INVAILD
+	}
+	if nil != err {
+		logger.Info("parse token failed, err: %v", err)
+		return api.ERROR_TOKEN_INVALID
+	}
 
-	s.OnConnect(func(conn sio.Conn) error {
-		logger.Info("socket.io connected, socket id :%v", conn.ID())
-		si := NewSession(conn)
-		err := s.AcceptSession(si, conn.URL().RawQuery)
-		conn.Emit("auth", api.NewBaseResponse(err, nil))
-		if err != api.ERROR_CODE_OK {
-			go func() {
-				//Reconnect time
-				<-time.After(20 * time.Second)
-				conn.Close()
-			}()
-		}
-		go s.PushInitData(si)
-		return nil
-	})
+	t := vals.Get("token")
+	rawJson, err := s.logicAgent.Auth(t)
+	if err != nil {
+		logger.Error("Session.Auth get auth response err. err: %v", err)
+		return api.ERROR_HTTP_INNER_ERROR
+	}
+	resp := &api.BaseRepsonse{}
+	if err = json.Unmarshal(rawJson.(json.RawMessage), resp); err != nil {
+		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
+		return api.ERROR_HTTP_INNER_ERROR
+	}
+	if resp.Code != api.ERROR_CODE_OK {
+		// Auth failed
+		logger.Error("Session.Auth auth failed. Maybe token expired? Session:[%v]", session.ToString())
+		return api.ERROR_AUTH_FAILED
+	}
+	u := &model.User{}
+	if err = encoding.MapToStruct(resp.Data, u); err != nil {
+		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
+		return api.ERROR_HTTP_INNER_ERROR
+	}
+	session.uid = u.UID
+	s.Lock()
+	s.SocketIOToSessions[session.sid] = session
+	s.UIDToSessions[session.uid] = session
+	s.Unlock()
+	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 
-	s.OnDisconnect(func(conn sio.Conn, message string) {
-		logger.Info("socket.io disconnected, socket id :%v", conn.ID())
-		s.Lock()
-		si, _ := s.SocketIOToSessions[conn.ID()]
-		if nil != si {
-			logger.Info("Session disconnected, session[%v]", si.ToString())
-			delete(s.SocketIOToSessions, conn.ID())
-		}
+	logger.Info("Session.Accept done. Session[%v]", session.ToString())
+	return api.ERROR_CODE_OK
 
-		s.Unlock()
-	})
-
-	s.OnError(func(conn sio.Conn, err error) {
-		logger.Error("socket.io on err: %v, id: %v", err, conn.ID())
-	})
-
-	// mount handlers
-	handlers := NewSIOHandlers()
-	handlers["console"] = handler.Console
-	handlers["chat"] = handler.Chat
-	handlers["pingpong"] = handler.Ping
-	s.MountHandlers("/", handlers)
-
-	// run
-	go s.Run(cfg) //nolint: errcheck
 }
 
-//PushLoadData push init data
+// PushInitData PushLoadData push init data
 func (s *Server) PushInitData(si *Session) {
 	data, err := s.logicAgent.LoadInitData(si.uid)
 	if err != nil {
