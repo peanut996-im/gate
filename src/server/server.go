@@ -7,8 +7,8 @@ import (
 	"framework/api"
 	"framework/api/model"
 	"framework/cfgargs"
-	"framework/encoding"
 	"framework/logger"
+	"framework/tool"
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"net/url"
@@ -213,7 +213,7 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 		return api.ERROR_AUTH_FAILED
 	}
 	u := &model.User{}
-	if err = encoding.MapToStruct(resp.Data, u); err != nil {
+	if err = tool.MapToStruct(resp.Data, u); err != nil {
 		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
 		return api.ERROR_HTTP_INNER_ERROR
 	}
