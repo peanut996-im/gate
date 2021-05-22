@@ -9,7 +9,6 @@ import (
 	"framework/cfgargs"
 	"framework/encoding"
 	"framework/logger"
-	"gate/handler"
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"net/url"
@@ -23,8 +22,8 @@ type Server struct {
 	nsp                string
 	handlers           map[string]interface{}
 	SocketIOToSessions map[string]*Session
-	UIDSceneToSessions map[string]*Session
-	UIDToSessions      map[string]*Session
+	//UIDSceneToSessions map[string]*Session
+	SceneToSessions map[string]*Session
 	sync.Mutex
 }
 
@@ -38,10 +37,23 @@ func NewServer() *Server {
 		nsp:                "/",
 		handlers:           make(map[string]interface{}),
 		SocketIOToSessions: make(map[string]*Session),
-		UIDSceneToSessions: make(map[string]*Session),
-		UIDToSessions:      make(map[string]*Session),
+		//UIDSceneToSessions: make(map[string]*Session),
+		SceneToSessions: make(map[string]*Session),
 	}
 	return s
+}
+
+func (s *Server) MountHandlers() {
+	s.handlers[AddFriendEvent] = AddFriend
+	s.handlers[JoinGroupEvent] = JoinGroup
+	s.handlers[DeleteFriendEvent] = DeleteFriend
+	s.handlers[CreateGroupEvent] = CreateGroup
+	s.handlers[ChatEvent] = Chat
+	s.handlers[LeaveGroupEvent] = LeaveGroup
+
+	for k, v := range s.handlers {
+		s.srv.OnEvent(s.nsp, k, v)
+	}
 }
 
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
@@ -77,25 +89,19 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 		}
 
 		s.Unlock()
+		s.DisconnectSession(conn)
 	})
 
 	s.OnError(func(conn sio.Conn, err error) {
 		logger.Error("socket.io on err: %v, id: %v", err, conn.ID())
 	})
 
-	// mount handlers
-	handlers := NewSIOHandlers()
-	handlers["console"] = handler.Console
-	handlers["chat"] = handler.Chat
-	handlers["pingpong"] = handler.Ping
-	s.MountHandlers("/", handlers)
-
+	s.MountHandlers()
 	// run
 	go s.Run(cfg) //nolint: errcheck
 }
 
 func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
-
 	defer func(srv *sio.Server) {
 		err := srv.Close()
 		if err != nil {
@@ -149,13 +155,6 @@ func (s *Server) OnError(f func(sio.Conn, error)) {
 	s.srv.OnError(s.nsp, f)
 }
 
-func (s *Server) MountHandlers(nsp string, handlers map[string]interface{}) {
-	for k, v := range handlers {
-		//fmt.Printf("nsp is %v",nsp)
-		s.srv.OnEvent(nsp, k, v)
-	}
-}
-
 func (s *Server) SocketIOToSession(c sio.Conn) *Session {
 	s.Lock()
 	si, ok := s.SocketIOToSessions[c.ID()]
@@ -167,40 +166,19 @@ func (s *Server) SocketIOToSession(c sio.Conn) *Session {
 	return si
 }
 
-func (s *Server) UIDSceneToSession(uidScene string) *Session {
-	s.Lock()
-	si, ok := s.UIDSceneToSessions[uidScene]
-	s.Unlock()
-	if !ok {
-		logger.Warn("session not found")
-		return nil
-	}
-	return si
-}
+//
+//func (s *Server) UIDSceneToSession(uidScene string) *Session {
+//	s.Lock()
+//	si, ok := s.UIDSceneToSessions[uidScene]
+//	s.Unlock()
+//	if !ok {
+//		logger.Warn("session not found")
+//		return nil
+//	}
+//	return si
+//}
 
-func (s *Server) DisconnectSession(conn sio.Conn) *Session {
-
-	s.Lock()
-	si, ok := s.SocketIOToSessions[conn.ID()]
-	if ok || nil != si {
-		delete(s.SocketIOToSessions, si.Conn.ID())
-	} else {
-		logger.Warn("Sessions.DisconnectSession[%v] not found", ToString(conn))
-	}
-
-	if nil != si {
-		siScene, ok := s.UIDSceneToSessions[si.UIDSceneString()]
-		if ok || nil != siScene {
-			logger.Info("Sessions.DisconnectSession,UIDAndScene:v%", si.UIDSceneString())
-			delete(s.UIDSceneToSessions, si.UIDSceneString())
-		}
-	}
-
-	s.Unlock()
-	return si
-}
-
-//SetNameSpace 改变默认的namespace
+//SetNameSpace reset namespace
 func (s *Server) SetNameSpace(nsp string) {
 	s.nsp = nsp
 }
@@ -239,21 +217,43 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
 		return api.ERROR_HTTP_INNER_ERROR
 	}
-	session.uid = u.UID
+	session.SetScene(u.UID)
+	session.token = t
 	s.Lock()
-	s.SocketIOToSessions[session.sid] = session
-	s.UIDToSessions[session.uid] = session
+	s.SocketIOToSessions[session.GetID()] = session
+	s.SceneToSessions[session.scene] = session
 	s.Unlock()
 	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 
 	logger.Info("Session.Accept done. Session[%v]", session.ToString())
 	return api.ERROR_CODE_OK
+}
 
+func (s *Server) DisconnectSession(conn sio.Conn) *Session {
+
+	s.Lock()
+	si, ok := s.SocketIOToSessions[conn.ID()]
+	if ok || nil != si {
+		delete(s.SocketIOToSessions, si.Conn.ID())
+	} else {
+		logger.Warn("Sessions.DisconnectSession[%v] not found", ToString(conn))
+	}
+
+	if nil != si {
+		siScene, ok := s.SceneToSessions[si.scene]
+		if ok || nil != siScene {
+			logger.Info("Sessions.DisconnectSession,UIDAndScene:v%", si.scene)
+			delete(s.SceneToSessions, si.scene)
+		}
+	}
+
+	s.Unlock()
+	return si
 }
 
 // PushInitData PushLoadData push init data
 func (s *Server) PushInitData(si *Session) {
-	data, err := s.logicAgent.LoadInitData(si.uid)
+	data, err := s.logicAgent.LoadInitData(si.scene)
 	if err != nil {
 		return
 	}

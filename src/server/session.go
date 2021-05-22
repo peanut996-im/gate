@@ -12,22 +12,23 @@ import (
 type Session struct {
 	Conn  sio.Conn
 	token string
-	uid   string
 	scene string
-	sid   string
 }
 
 func NewSession(conn sio.Conn) *Session {
 	return &Session{
 		Conn: conn,
-		sid:  conn.ID(),
 	}
 }
+func (s *Session) GetScene() string {
+	return s.scene
+}
+
 func (s *Session) SetScene(scene string) {
 	s.scene = scene
 }
 
-func (s *Session) ID() string {
+func (s *Session) GetID() string {
 	return s.Conn.ID()
 }
 
@@ -41,9 +42,9 @@ func ToString(c sio.Conn) string {
 	return "conn not found"
 }
 
-func (s *Session) UIDSceneString() string {
-	return fmt.Sprintf("uid:%v_scene:%v", s.uid, s.scene)
-}
+//func (s *Session) UIDSceneString() string {
+//	return fmt.Sprintf("uid:%v_scene:%v", s.uid, s.scene)
+//}
 
 func (s *Session) Auth(token string) (*model.User, error) {
 	//todo move auth to logic
@@ -52,9 +53,6 @@ func (s *Session) Auth(token string) (*model.User, error) {
 		logger.Info("check user token failed error: %v", err)
 		return nil, err
 	}
-	s.uid = resp.UID
-	s.token = token
-	s.sid = s.Conn.ID()
 	return resp, nil
 }
 
