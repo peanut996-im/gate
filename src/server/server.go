@@ -44,12 +44,12 @@ func NewServer() *Server {
 }
 
 func (s *Server) MountHandlers() {
-	s.handlers[AddFriendEvent] = AddFriend
-	s.handlers[JoinGroupEvent] = JoinGroup
-	s.handlers[DeleteFriendEvent] = DeleteFriend
-	s.handlers[CreateGroupEvent] = CreateGroup
-	s.handlers[ChatEvent] = Chat
-	s.handlers[LeaveGroupEvent] = LeaveGroup
+	s.handlers[AddFriendEvent] = s.AddFriend
+	s.handlers[JoinGroupEvent] = s.JoinGroup
+	s.handlers[DeleteFriendEvent] = s.DeleteFriend
+	s.handlers[CreateGroupEvent] = s.CreateGroup
+	s.handlers[ChatEvent] = s.Chat
+	s.handlers[LeaveGroupEvent] = s.LeaveGroup
 
 	for k, v := range s.handlers {
 		s.srv.OnEvent(s.nsp, k, v)
@@ -58,7 +58,9 @@ func (s *Server) MountHandlers() {
 
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	// rpc by http
-	s.logicAgent = logic.NewLogicAgentHttp()
+	if cfg.Logic.Mode == "http" {
+		s.logicAgent = logic.NewLogicAgentHttp()
+	}
 	s.logicAgent.Init(cfg)
 	// sio srv init
 
@@ -209,7 +211,7 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	}
 	if resp.Code != api.ERROR_CODE_OK {
 		// Auth failed
-		logger.Error("Session.Auth auth failed. Maybe token expired? Session:[%v]", session.ToString())
+		logger.Error("Session.Auth auth failed. Maybe token expired? UID: [%v], Session:[%v]", vals.Get("uid"), session.ToString())
 		return api.ERROR_AUTH_FAILED
 	}
 	u := &model.User{}

@@ -15,7 +15,7 @@ const (
 	LeaveGroupEvent   = "leaveGroup"
 )
 
-func Chat(conn sio.Conn) {
+func (s *Server) Chat(conn sio.Conn) {
 	logger.Info("/chat: revived message from %v", conn.ID())
 }
 
@@ -28,22 +28,22 @@ func Chat(conn sio.Conn) {
 //	logger.Info("/console [%v]: %v", conn.ID(), msg)
 //}
 
-func AddFriend(conn sio.Conn, request *api.FriendRequest) {
+func (s *Server) AddFriend(conn sio.Conn, request *api.FriendRequest) {
 	logger.Info("/addFriend from[%v]: %+v", conn.ID(), request)
 }
 
-func DeleteFriend(conn sio.Conn, request *api.FriendRequest) {
-	logger.Info("/addFriend from[%v]: %+v", conn.ID(), request)
+func (s *Server) DeleteFriend(conn sio.Conn, request *api.FriendRequest) {
+	logger.Info("/deleteFriend from[%v]: %+v", conn.ID(), request)
 }
 
-func CreateGroup(conn sio.Conn) {
-	logger.Info("/createGroup from[%v]: %+v", conn.ID())
+func (s *Server) CreateGroup(conn sio.Conn) {
+	logger.Info("/createGroup from[%v]: ", conn.ID())
 }
 
-func JoinGroup(conn sio.Conn) {
-	logger.Info("/joinGroup from[%v]: %+v", conn.ID())
+func (s *Server) JoinGroup(conn sio.Conn) {
+	logger.Info("/joinGroup from[%v]: ", conn.ID())
 }
 
-func LeaveGroup(conn sio.Conn) {
-	logger.Info("/leaveGroup from[%v]: %+v", conn.ID())
+func (s *Server) LeaveGroup(conn sio.Conn) {
+	logger.Info("/leaveGroup from[%v]: ", conn.ID())
 }
