@@ -58,10 +58,10 @@ func (s *Server) GetEventHandler(event string) interface{} {
 func (s *Server) MountHandlers() {
 	s.handlers[api.EventAddFriend] = s.GetEventHandler(api.EventAddFriend)
 	s.handlers[api.EventJoinGroup] = s.GetEventHandler(api.EventJoinGroup)
-	s.handlers[api.EventDeleteFriend] = s.GetEventHandler(api.EventJoinGroup)
+	s.handlers[api.EventDeleteFriend] = s.GetEventHandler(api.EventDeleteFriend)
 	s.handlers[api.EventCreateGroup] = s.GetEventHandler(api.EventCreateGroup)
-	s.handlers[api.EventChat] = s.GetEventHandler(api.EventChat)
 	s.handlers[api.EventLeaveGroup] = s.GetEventHandler(api.EventLeaveGroup)
+	s.handlers[api.EventChat] = s.GetEventHandler(api.EventChat)
 
 	for k, v := range s.handlers {
 		s.srv.OnEvent(s.nsp, k, v)
