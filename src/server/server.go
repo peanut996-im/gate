@@ -3,9 +3,9 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"framework/agent/logic"
 	"framework/api"
 	"framework/api/model"
+	"framework/broker/logic"
 	"framework/cfgargs"
 	"framework/logger"
 	"framework/tool"
@@ -18,7 +18,7 @@ import (
 
 type Server struct {
 	srv                *sio.Server
-	logicAgent         logic.LogicAgent
+	logicBroker        logic.LogicBroker
 	nsp                string
 	handlers           map[string]interface{}
 	SocketIOToSessions map[string]*Session
@@ -43,13 +43,25 @@ func NewServer() *Server {
 	return s
 }
 
+func (s *Server) GetEventHandler(event string) interface{} {
+	return func(conn sio.Conn, data interface{}) {
+		logger.Info("/%v from[%v]: %+v", event, conn.ID(), data)
+		rawJson, err := s.logicBroker.Send(event, data)
+		if nil != err {
+			conn.Emit(event, api.NewHttpInnerErrorResponse(err))
+			logger.Error("Gate.Event[%v] Broker err: %v", event, err)
+		}
+		conn.Emit(event, rawJson.(json.RawMessage))
+	}
+}
+
 func (s *Server) MountHandlers() {
-	s.handlers[AddFriendEvent] = s.AddFriend
-	s.handlers[JoinGroupEvent] = s.JoinGroup
-	s.handlers[DeleteFriendEvent] = s.DeleteFriend
-	s.handlers[CreateGroupEvent] = s.CreateGroup
-	s.handlers[ChatEvent] = s.Chat
-	s.handlers[LeaveGroupEvent] = s.LeaveGroup
+	s.handlers[api.EventAddFriend] = s.GetEventHandler(api.EventAddFriend)
+	s.handlers[api.EventJoinGroup] = s.GetEventHandler(api.EventJoinGroup)
+	s.handlers[api.EventDeleteFriend] = s.GetEventHandler(api.EventJoinGroup)
+	s.handlers[api.EventCreateGroup] = s.GetEventHandler(api.EventCreateGroup)
+	s.handlers[api.EventChat] = s.GetEventHandler(api.EventChat)
+	s.handlers[api.EventLeaveGroup] = s.GetEventHandler(api.EventLeaveGroup)
 
 	for k, v := range s.handlers {
 		s.srv.OnEvent(s.nsp, k, v)
@@ -59,9 +71,9 @@ func (s *Server) MountHandlers() {
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	// rpc by http
 	if cfg.Logic.Mode == "http" {
-		s.logicAgent = logic.NewLogicAgentHttp()
+		s.logicBroker = logic.NewLogicBrokerHttp()
 	}
-	s.logicAgent.Init(cfg)
+	s.logicBroker.Init(cfg)
 	// sio srv init
 
 	s.OnConnect(func(conn sio.Conn) error {
@@ -69,7 +81,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 		si := NewSession(conn)
 		err := s.AcceptSession(si, conn.URL().RawQuery)
 		conn.Emit("auth", api.NewBaseResponse(err, nil))
-		if err != api.ERROR_CODE_OK {
+		if err != api.ErrorCodeOK {
 			go func() {
 				//Reconnect time
 				<-time.After(20 * time.Second)
@@ -117,7 +129,7 @@ func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
 		}
 	}() //nolint: errcheck
 
-	if cfg.HTTP.Cors {
+	if cfg.SocketIO.Cors {
 		http.HandleFunc("/socket.io/", func(w http.ResponseWriter, r *http.Request) {
 			allowHeaders := "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization"
 			if origin := r.Header.Get("Origin"); origin != "" {
@@ -191,33 +203,33 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
 	if sign != vals.Get("sign") {
 		logger.Info("Session[%v]'s  sign: %v", session.ToString(), sign)
-		return api.ERROR_SIGN_INVAILD
+		return api.ErrorSignInvalid
 	}
 	if nil != err {
 		logger.Info("parse token failed, err: %v", err)
-		return api.ERROR_TOKEN_INVALID
+		return api.ErrorTokenInvalid
 	}
 
 	t := vals.Get("token")
-	rawJson, err := s.logicAgent.Auth(t)
+	rawJson, err := s.logicBroker.Send(api.EventAuth, t)
 	if err != nil {
 		logger.Error("Session.Auth get auth response err. err: %v", err)
-		return api.ERROR_HTTP_INNER_ERROR
+		return api.ErrorHttpInnerError
 	}
 	resp := &api.BaseRepsonse{}
 	if err = json.Unmarshal(rawJson.(json.RawMessage), resp); err != nil {
 		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
-		return api.ERROR_HTTP_INNER_ERROR
+		return api.ErrorHttpInnerError
 	}
-	if resp.Code != api.ERROR_CODE_OK {
+	if resp.Code != api.ErrorCodeOK {
 		// Auth failed
 		logger.Error("Session.Auth auth failed. Maybe token expired? UID: [%v], Session:[%v]", vals.Get("uid"), session.ToString())
-		return api.ERROR_AUTH_FAILED
+		return api.ErrorAuthFailed
 	}
 	u := &model.User{}
 	if err = tool.MapToStruct(resp.Data, u); err != nil {
 		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
-		return api.ERROR_HTTP_INNER_ERROR
+		return api.ErrorHttpInnerError
 	}
 	session.SetScene(u.UID)
 	session.token = t
@@ -228,7 +240,7 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 
 	logger.Info("Session.Accept done. Session[%v]", session.ToString())
-	return api.ERROR_CODE_OK
+	return api.ErrorCodeOK
 }
 
 func (s *Server) DisconnectSession(conn sio.Conn) *Session {
@@ -255,7 +267,7 @@ func (s *Server) DisconnectSession(conn sio.Conn) *Session {
 
 // PushInitData PushLoadData push init data
 func (s *Server) PushInitData(si *Session) {
-	data, err := s.logicAgent.LoadInitData(si.scene)
+	data, err := s.logicBroker.Send(api.EventLoad, si.GetScene())
 	if err != nil {
 		return
 	}
