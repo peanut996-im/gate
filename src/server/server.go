@@ -79,15 +79,17 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	s.OnConnect(func(conn sio.Conn) error {
 		logger.Info("socket.io connected, socket id :%v", conn.ID())
 		si := NewSession(conn)
-		err := s.AcceptSession(si, conn.URL().RawQuery)
-		conn.Emit("auth", api.NewBaseResponse(err, nil))
-		if err != api.ErrorCodeOK {
+		err := s.AcceptSession(si)
+
+		if err != nil{
 			go func() {
 				//Reconnect time
+				conn.Emit("auth", api.AuthFaildResp)
 				<-time.After(20 * time.Second)
 				conn.Close()
 			}()
 		} else {
+			conn.Emit("auth", api.NewSuccessResponse(nil))
 			go s.PushInitData(si)
 		}
 		return nil
@@ -198,41 +200,11 @@ func (s *Server) SetNameSpace(nsp string) {
 }
 
 //AcceptSession authentication for session
-func (s *Server) AcceptSession(session *Session, query string) (error int) {
-	vals, err := url.ParseQuery(query)
-	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
-	if sign != vals.Get("sign") {
-		logger.Info("Session[%v]'s  sign: %v", session.ToString(), sign)
-		return api.ErrorSignInvalid
+func (s *Server) AcceptSession(session *Session) error {
+	ok,err := s.Auth(session)
+	if !ok || nil != err{
+		return err
 	}
-	if nil != err {
-		logger.Info("parse token failed, err: %v", err)
-		return api.ErrorTokenInvalid
-	}
-
-	t := vals.Get("token")
-	rawJson, err := s.logicBroker.Send(api.EventAuth, t)
-	if err != nil {
-		logger.Error("Session.Auth get auth response err. err: %v", err)
-		return api.ErrorHttpInnerError
-	}
-	resp := &api.BaseRepsonse{}
-	if err = json.Unmarshal(rawJson.(json.RawMessage), resp); err != nil {
-		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
-		return api.ErrorHttpInnerError
-	}
-	if resp.Code != api.ErrorCodeOK {
-		// Auth failed
-		logger.Error("Session.Auth auth failed. Maybe token expired? UID: [%v], Session:[%v]", vals.Get("uid"), session.ToString())
-		return api.ErrorAuthFailed
-	}
-	u := &model.User{}
-	if err = tool.MapToStruct(resp.Data, u); err != nil {
-		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
-		return api.ErrorHttpInnerError
-	}
-	session.SetScene(u.UID)
-	session.token = t
 	s.Lock()
 	s.SocketIOToSessions[session.GetID()] = session
 	s.SceneToSessions[session.scene] = session
@@ -240,7 +212,7 @@ func (s *Server) AcceptSession(session *Session, query string) (error int) {
 	logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 
 	logger.Info("Session.Accept done. Session[%v]", session.ToString())
-	return api.ErrorCodeOK
+	return nil
 }
 
 func (s *Server) DisconnectSession(conn sio.Conn) *Session {
@@ -263,6 +235,47 @@ func (s *Server) DisconnectSession(conn sio.Conn) *Session {
 
 	s.Unlock()
 	return si
+}
+
+
+func (s *Server) Auth(session *Session) (bool, error) {
+	vals, err := url.ParseQuery(session.query)
+	sign, _ := api.MakeSignWithQueryParams(vals, cfgargs.GetLastSrvConfig().AppKey)
+	if sign != vals.Get("sign") {
+		logger.Info("Session.Auth failed. sign invalid: %v", sign)
+		return false,api.ErrorCodeToError(api.ErrorSignInvalid)
+	}
+	if nil != err {
+		logger.Info("parse token failed, err: %v", err)
+		return false,api.ErrorCodeToError(api.ErrorTokenInvalid)
+	}
+
+	t := vals.Get("token")
+	rawJson, err := s.logicBroker.Send(api.EventAuth, t)
+	if err != nil {
+		logger.Error("Session.Auth get auth response err. err: %v", err)
+		return false,api.ErrorCodeToError(api.ErrorHttpInnerError)
+	}
+	resp := &api.BaseRepsonse{}
+	if err = json.Unmarshal(rawJson.(json.RawMessage), resp); err != nil {
+		logger.Info("Session.Save json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
+		return false, api.ErrorCodeToError(api.ErrorHttpInnerError)
+	}
+	if resp.Code != api.ErrorCodeOK || resp.Data == nil{
+		// Auth failed
+		logger.Error("Session.Auth auth failed. Maybe token expired or user not exist? UID: [%v], Session:[%v]", vals.Get("uid"), session.ToString())
+		return false,api.ErrorCodeToError(api.ErrorAuthFailed)
+	}
+	u := &model.User{}
+	if err = tool.MapToStruct(resp.Data, u); err != nil {
+		logger.Info("Session.Auth json unmarshal err. err:%v, Session:[%v]", err, session.ToString())
+		return false,api.ErrorCodeToError(api.ErrorHttpInnerError)
+	}
+
+	logger.Info("Session.Auth succeed.")
+	session.SetScene(u.UID)
+	session.token = t
+	return true,nil
 }
 
 // PushInitData PushLoadData push init data

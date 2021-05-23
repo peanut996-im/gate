@@ -2,10 +2,6 @@ package server
 
 import (
 	"fmt"
-	"framework/api"
-	"framework/api/model"
-	"framework/logger"
-
 	sio "github.com/googollee/go-socket.io"
 )
 
@@ -13,11 +9,13 @@ type Session struct {
 	Conn  sio.Conn
 	token string
 	scene string
+	query string
 }
 
 func NewSession(conn sio.Conn) *Session {
 	return &Session{
 		Conn: conn,
+		query: conn.URL().RawQuery,
 	}
 }
 func (s *Session) GetScene() string {
@@ -46,15 +44,6 @@ func ToString(c sio.Conn) string {
 //	return fmt.Sprintf("uid:%v_scene:%v", s.uid, s.scene)
 //}
 
-func (s *Session) Auth(token string) (*model.User, error) {
-	//todo move auth to logic
-	resp, err := api.CheckToken(token)
-	if err != nil {
-		logger.Info("check user token failed error: %v", err)
-		return nil, err
-	}
-	return resp, nil
-}
 
 func (s *Session) ToString() string {
 	return ToString(s.Conn)
