@@ -2,7 +2,9 @@ package app
 
 import (
 	"framework/cfgargs"
+	"framework/logger"
 	"gate/server"
+	"github.com/gin-gonic/gin"
 	"sync"
 )
 
@@ -25,7 +27,7 @@ func GetApp() *App {
 }
 
 func (a *App) Init(cfg *cfgargs.SrvConfig) {
-
+	gin.DefaultWriter = logger.MultiWriter(logger.DefLogger().GetLogWriters()...)
 	//socket.io
 	a.srv = server.NewServer()
 	a.srv.Init(cfg)

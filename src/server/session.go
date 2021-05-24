@@ -46,7 +46,7 @@ func ToString(c sio.Conn) string {
 
 
 func (s *Session) ToString() string {
-	return ToString(s.Conn)
+	return fmt.Sprintf("Scene: %v, ",s.scene)+ToString(s.Conn)
 }
 
 func (s *Session) Push(event string, data interface{}) {
