@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"framework/api"
 	"framework/api/model"
@@ -84,8 +85,15 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 		if err != nil {
 			go func() {
 				//Reconnect time
-				conn.Emit("auth", api.AuthFaildResp)
-				<-time.After(2 * time.Second)
+				switch err.Error() {
+				case api.ErrorCodeToString(api.ErrorSignInvalid):
+					conn.Emit("auth", api.SignInvaildResp)
+				case api.ErrorCodeToString(api.ErrorTokenInvalid):
+					conn.Emit("auth", api.TokenInvaildResp)
+				case api.ErrorCodeToString(api.ErrorHttpInnerError):
+					conn.Emit("auth", api.NewHttpInnerErrorResponse(errors.New("auth server no response.")))
+				}
+				<-time.After(20 * time.Second)
 				conn.Close()
 			}()
 		} else {
