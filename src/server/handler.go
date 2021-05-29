@@ -46,7 +46,7 @@ func (s *Server) Auth(session *Session) (bool, error) {
 	if resp.Code != api.ErrorCodeOK || resp.Data == nil {
 		// Auth failed
 		logger.Error("Session.Auth auth failed. Maybe token expired or user not exist? UID: [%v], Session:[%v]", vals.Get("uid"), session.ToString())
-		return false, api.ErrorCodeToError(api.ErrorAuthFailed)
+		return false, api.ErrorCodeToError(api.ErrorTokenInvalid)
 	}
 	u := &model.User{}
 	if err = tool.MapToStruct(resp.Data, u); err != nil {
@@ -129,16 +129,15 @@ func (s *Server) PushOfflineMessage(session *Session) {
 
 }
 
-
-func (s *Server) Debug(c *gin.Context){
-	res :="SocketIOToSessions:\n{\n"
+func (s *Server) Debug(c *gin.Context) {
+	res := "SocketIOToSessions:\n{\n"
 	for socket, session := range s.SocketIOToSessions {
-		res += fmt.Sprintf("    socket.id: %v, sesssion: %v\n",socket,session.ToString())
+		res += fmt.Sprintf("    socket.id: %v, sesssion: %v\n", socket, session.ToString())
 	}
 	res += "}\nSceneToSessions:\n{\n"
 	for scene, session := range s.SceneToSessions {
-		res += fmt.Sprintf("    scene: %v, sesssion: %v\n",scene,session.ToString())
+		res += fmt.Sprintf("    scene: %v, sesssion: %v\n", scene, session.ToString())
 	}
 	res += "}\n"
-	c.String(http.StatusOK,res)
+	c.String(http.StatusOK, res)
 }
