@@ -98,7 +98,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 			}()
 		} else {
 			conn.Emit("auth", api.NewSuccessResponse(nil))
-			go s.PushInitData(si)
+			go s.PushLoadData(si)
 		}
 		go func() {
 			//Resend offline Message time

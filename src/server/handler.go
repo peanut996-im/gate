@@ -60,8 +60,8 @@ func (s *Server) Auth(session *Session) (bool, error) {
 	return true, nil
 }
 
-// PushInitData PushLoadData push init data
-func (s *Server) PushInitData(si *Session) {
+// PushLoadData PushLoadData push init data
+func (s *Server) PushLoadData(si *Session) {
 	data, err := s.logicBroker.Send(api.EventLoad, si.GetScene())
 	if err != nil {
 		return
