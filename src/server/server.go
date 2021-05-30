@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"framework/api"
@@ -43,18 +42,6 @@ func NewServer() *Server {
 		SceneToSessions: make(map[string]*Session),
 	}
 	return s
-}
-
-func (s *Server) GetEventHandler(event string) interface{} {
-	return func(conn sio.Conn, data interface{}) {
-		logger.Info("/%v from[%v]: %+v", event, conn.ID(), data)
-		rawJson, err := s.logicBroker.Send(event, data)
-		if nil != err {
-			conn.Emit(event, api.NewHttpInnerErrorResponse(err))
-			logger.Error("Gate.Event[%v] Broker err: %v", event, err)
-		}
-		conn.Emit(event, rawJson.(json.RawMessage))
-	}
 }
 
 func (s *Server) MountHandlers() {

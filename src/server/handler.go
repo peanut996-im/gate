@@ -15,10 +15,23 @@ import (
 	"framework/logger"
 	"framework/tool"
 	"github.com/gin-gonic/gin"
+	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"net/url"
 	"reflect"
 )
+
+func (s *Server) GetEventHandler(event string) interface{} {
+	return func(conn sio.Conn, data interface{}) {
+		logger.Info("/%v from[%v]: %+v", event, conn.ID(), data)
+		rawJson, err := s.logicBroker.Send(event, data)
+		if nil != err {
+			conn.Emit(event, api.NewHttpInnerErrorResponse(err))
+			logger.Error("Gate.Event[%v] Broker err: %v", event, err)
+		}
+		conn.Emit(event, rawJson.(json.RawMessage))
+	}
+}
 
 func (s *Server) Auth(session *Session) (bool, error) {
 	vals, err := url.ParseQuery(session.query)
