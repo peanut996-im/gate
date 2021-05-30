@@ -65,6 +65,8 @@ func (s *Server) MountHandlers() {
 	s.handlers[api.EventLeaveGroup] = s.GetEventHandler(api.EventLeaveGroup)
 	s.handlers[api.EventChat] = s.GetEventHandler(api.EventChat)
 	s.handlers[api.EventGetUserInfo] = s.GetEventHandler(api.EventGetUserInfo)
+	s.handlers[api.EventFindUser] = s.GetEventHandler(api.EventFindUser)
+	s.handlers[api.EventFindGroup] = s.GetEventHandler(api.EventFindGroup)
 
 	for k, v := range s.handlers {
 		s.sioSrv.OnEvent(s.nsp, k, v)
