@@ -103,7 +103,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 		go func() {
 			//Resend offline Message time
 			time.Sleep(2 * time.Second)
-			s.PushOfflineMessage(si)
+			//s.PushOfflineMessage(si)
 		}()
 		return nil
 	})
