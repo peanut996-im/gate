@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"framework/api"
 	"framework/api/model"
-	"framework/broker/logic"
 	"framework/cfgargs"
 	"framework/logger"
 	"framework/tool"
@@ -18,13 +17,39 @@ import (
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"net/url"
-	"reflect"
 )
 
-func (s *Server) GetEventHandler(event string) interface{} {
+func (s *Server) HandleInvoke(c *gin.Context) {
+	logger.Info("Gate.HandleInvoke from Logic")
+	iR := &api.InvokeRequest{}
+	err := c.BindJSON(iR)
+	if err != nil {
+		logger.Error("Gate.HandleInvoke "+api.UnmarshalJsonError, err)
+		c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
+		return
+	}
+	for _, target := range iR.Targets {
+		go s.HandleInvokeEvent(target, iR.Event, iR.Data)
+	}
+	logger.Info("Gate.HandleInvoke Done.")
+}
+
+func (s *Server) HandleInvokeEvent(scene, event string, data interface{}) {
+	s.Lock()
+	si, ok := s.SceneToSessions[scene]
+	if !ok {
+		logger.Info("Gate.HandleInvokeEvent Scene offline. Event: %v, Scene: %v", event, scene)
+		s.Unlock()
+		return
+	}
+	s.Unlock()
+	si.Push(event, data)
+}
+
+func (s *Server) SocketEventHandler(event string) interface{} {
 	return func(conn sio.Conn, data interface{}) {
 		logger.Info("/%v from[%v]: %+v", event, conn.ID(), data)
-		rawJson, err := s.logicBroker.Send(event, data)
+		rawJson, err := s.gateBroker.Send(event, data)
 		if nil != err {
 			conn.Emit(event, api.NewHttpInnerErrorResponse(err))
 			logger.Error("Gate.Event[%v] Broker err: %v", event, err)
@@ -46,7 +71,7 @@ func (s *Server) Auth(session *Session) (bool, error) {
 	}
 
 	t := vals.Get("token")
-	rawJson, err := s.logicBroker.Send(api.EventAuth, t)
+	rawJson, err := s.gateBroker.Send(api.EventAuth, t)
 	if err != nil {
 		logger.Error("Session.Auth get auth response err. err: %v", err)
 		return false, api.ErrorCodeToError(api.ErrorHttpInnerError)
@@ -73,22 +98,13 @@ func (s *Server) Auth(session *Session) (bool, error) {
 	return true, nil
 }
 
-// PushLoadData PushLoadData push init data
-func (s *Server) PushLoadData(si *Session) {
-	data, err := s.logicBroker.Send(api.EventLoad, si.GetScene())
-	if err != nil {
-		return
-	}
-	si.Push("load", data)
-}
-
-func (s *Server) ListenChat() {
-	if reflect.TypeOf(s.logicBroker).String() == reflect.TypeOf(&logic.LogicBrokerHttp{}).String() {
-		s.logicBroker.Listen(s.ListenChatHTTP())
-	} else {
-		logger.Debug("Gate.Listen HTTP Start Failed")
-	}
-}
+//func (s *Server) ListenChat() {
+//	if reflect.TypeOf(s.gateBroker).String() == reflect.TypeOf(&broker.GateBrokerHttp{}).String() {
+//		s.gateBroker.Listen(s.ListenChatHTTP())
+//	} else {
+//		logger.Debug("Gate.Listen HTTP Start Failed")
+//	}
+//}
 
 func (s *Server) ListenChatHTTP() interface{} {
 	return func(c *gin.Context) {

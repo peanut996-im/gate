@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"framework/api"
 	"framework/api/model"
-	"framework/broker/logic"
+	"framework/broker"
 	"framework/cfgargs"
 	"framework/logger"
+	myhttp "framework/net/http"
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"sync"
@@ -18,7 +19,7 @@ type Server struct {
 	sioSrv             *sio.Server
 	httpSrv            *http.Server
 	offlineMessages    map[string][]*model.ChatMessage
-	logicBroker        logic.LogicBroker
+	gateBroker         broker.GateBroker
 	nsp                string
 	handlers           map[string]interface{}
 	SocketIOToSessions map[string]*Session
@@ -45,18 +46,27 @@ func NewServer() *Server {
 }
 
 func (s *Server) MountHandlers() {
-	s.handlers[api.EventAddFriend] = s.GetEventHandler(api.EventAddFriend)
-	s.handlers[api.EventJoinGroup] = s.GetEventHandler(api.EventJoinGroup)
-	s.handlers[api.EventDeleteFriend] = s.GetEventHandler(api.EventDeleteFriend)
-	s.handlers[api.EventCreateGroup] = s.GetEventHandler(api.EventCreateGroup)
-	s.handlers[api.EventLeaveGroup] = s.GetEventHandler(api.EventLeaveGroup)
-	s.handlers[api.EventChat] = s.GetEventHandler(api.EventChat)
-	s.handlers[api.EventGetUserInfo] = s.GetEventHandler(api.EventGetUserInfo)
-	s.handlers[api.EventFindUser] = s.GetEventHandler(api.EventFindUser)
-	s.handlers[api.EventFindGroup] = s.GetEventHandler(api.EventFindGroup)
-	s.handlers[api.EventInviteFriend] = s.GetEventHandler(api.EventInviteFriend)
-	s.handlers[api.EventPullMessage] = s.GetEventHandler(api.EventPullMessage)
-	s.handlers[api.EventUpdateUser] = s.GetEventHandler(api.EventUpdateUser)
+	// socket.io
+	s.handlers[api.EventAddFriend] = s.SocketEventHandler(api.EventAddFriend)
+	s.handlers[api.EventJoinGroup] = s.SocketEventHandler(api.EventJoinGroup)
+	s.handlers[api.EventDeleteFriend] = s.SocketEventHandler(api.EventDeleteFriend)
+	s.handlers[api.EventCreateGroup] = s.SocketEventHandler(api.EventCreateGroup)
+	s.handlers[api.EventLeaveGroup] = s.SocketEventHandler(api.EventLeaveGroup)
+	s.handlers[api.EventChat] = s.SocketEventHandler(api.EventChat)
+	s.handlers[api.EventGetUserInfo] = s.SocketEventHandler(api.EventGetUserInfo)
+	s.handlers[api.EventFindUser] = s.SocketEventHandler(api.EventFindUser)
+	s.handlers[api.EventFindGroup] = s.SocketEventHandler(api.EventFindGroup)
+	s.handlers[api.EventInviteFriend] = s.SocketEventHandler(api.EventInviteFriend)
+	s.handlers[api.EventPullMessage] = s.SocketEventHandler(api.EventPullMessage)
+	s.handlers[api.EventUpdateUser] = s.SocketEventHandler(api.EventUpdateUser)
+
+	//gatebroker http handler
+	path := ""
+	routers := []*myhttp.Route{
+		myhttp.NewRoute(api.HTTPMethodPost, "", s.HandleInvoke),
+	}
+	node := myhttp.NewNodeRoute(path, routers...)
+	s.gateBroker.(*broker.GateBrokerHttp).AddNodeRoute(node)
 
 	for k, v := range s.handlers {
 		s.sioSrv.OnEvent(s.nsp, k, v)
@@ -66,8 +76,8 @@ func (s *Server) MountHandlers() {
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	// rpc by http
 	if cfg.Logic.Mode == "http" {
-		s.logicBroker = logic.NewLogicBrokerHttp()
-		s.logicBroker.Init(cfg)
+		s.gateBroker = broker.NewGateBrokerHttp()
+		s.gateBroker.Init(cfg)
 	}
 	// sio srv init
 	s.OnConnect(func(conn sio.Conn) error {
@@ -90,7 +100,6 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 			}()
 		} else {
 			conn.Emit("auth", api.NewSuccessResponse(nil))
-			go s.PushLoadData(si)
 		}
 		go func() {
 			//Resend offline Message time
@@ -115,6 +124,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 }
 
 func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
+	go s.gateBroker.Listen()
 	defer func(srv *sio.Server) {
 		err := srv.Close()
 		if err != nil {
@@ -151,7 +161,6 @@ func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
 	addr := fmt.Sprintf(":%v", cfg.SocketIO.Port)
 	logger.Info("Listening and serving Socket.IO on :%v", addr)
 
-	go s.ListenChat()
 	err := http.ListenAndServe(addr, nil)
 	logger.Fatal("Listening and serving Socket.IO at %v... err:%v", addr, err)
 	return err
@@ -176,6 +185,7 @@ func (s *Server) SetNameSpace(nsp string) {
 
 //AcceptSession authentication for session
 func (s *Server) AcceptSession(session *Session) error {
+	logger.Info("%v try to get lock")
 	s.Lock()
 	logger.Info("Session.Accept Start. Session[%v]", session.ToString())
 	ok, err := s.Auth(session)
@@ -211,14 +221,3 @@ func (s *Server) DisconnectSession(conn sio.Conn) *Session {
 	s.Unlock()
 	return si
 }
-
-//func (s *Server) SocketIOToSession(c sio.Conn) *Session {
-//	s.Lock()
-//	si, ok := s.SocketIOToSessions[c.ID()]
-//	s.Unlock()
-//	if !ok {
-//		logger.Warn("session not found")
-//		return nil
-//	}
-//	return si
-//}

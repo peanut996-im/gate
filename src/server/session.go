@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"framework/logger"
 	sio "github.com/googollee/go-socket.io"
 )
 
@@ -14,7 +15,7 @@ type Session struct {
 
 func NewSession(conn sio.Conn) *Session {
 	return &Session{
-		Conn: conn,
+		Conn:  conn,
 		query: conn.URL().RawQuery,
 	}
 }
@@ -44,11 +45,11 @@ func ToString(c sio.Conn) string {
 //	return fmt.Sprintf("uid:%v_scene:%v", s.uid, s.scene)
 //}
 
-
 func (s *Session) ToString() string {
-	return fmt.Sprintf("Scene: %v, ",s.scene)+ToString(s.Conn)
+	return fmt.Sprintf("Scene: %v, ", s.scene) + ToString(s.Conn)
 }
 
 func (s *Session) Push(event string, data interface{}) {
+	logger.Debug("Gate.Push Session: [%v] Event: %v, Data: %v", s.ToString(), event, data)
 	s.Conn.Emit(event, data)
 }
