@@ -29,12 +29,13 @@ func (s *Server) HandleInvoke(c *gin.Context) {
 		return
 	}
 	for _, target := range iR.Targets {
-		go s.HandleInvokeEvent(target, iR.Event, iR.Data)
+		s.Produce(&api.SingleInvokeRequest{Target: target, Event: iR.Event, Data: iR.Data})
 	}
 	logger.Info("Gate.HandleInvoke Done.")
 }
 
 func (s *Server) HandleInvokeEvent(scene, event string, data interface{}) {
+	// TODO multiply lock race.
 	s.Lock()
 	si, ok := s.SceneToSessions[scene]
 	if !ok {
@@ -96,6 +97,10 @@ func (s *Server) Auth(session *Session) (bool, error) {
 	session.SetScene(u.UID)
 	session.token = t
 	return true, nil
+}
+
+func (s *Server) ConsumeEvent(event *api.SingleInvokeRequest) {
+	s.HandleInvokeEvent(event.Target, event.Event, event.Data)
 }
 
 //func (s *Server) ListenChat() {

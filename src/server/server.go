@@ -25,6 +25,7 @@ type Server struct {
 	SocketIOToSessions map[string]*Session
 	//UIDSceneToSessions map[string]*Session
 	SceneToSessions map[string]*Session
+	eventQueue      chan *api.SingleInvokeRequest
 	sync.Mutex
 }
 
@@ -41,6 +42,7 @@ func NewServer() *Server {
 		SocketIOToSessions: make(map[string]*Session),
 		//UIDSceneToSessions: make(map[string]*Session),
 		SceneToSessions: make(map[string]*Session),
+		eventQueue:      make(chan *api.SingleInvokeRequest, 5000),
 	}
 	return s
 }
@@ -125,6 +127,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 
 func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
 	go s.gateBroker.Listen()
+	go s.Consume(s.ConsumeEvent)
 	defer func(srv *sio.Server) {
 		err := srv.Close()
 		if err != nil {
@@ -220,4 +223,14 @@ func (s *Server) DisconnectSession(conn sio.Conn) *Session {
 
 	s.Unlock()
 	return si
+}
+
+func (s *Server) Produce(event *api.SingleInvokeRequest) {
+	s.eventQueue <- event
+}
+
+func (s *Server) Consume(consumeFunc func(event *api.SingleInvokeRequest)) {
+	for event := range s.eventQueue {
+		consumeFunc(event)
+	}
 }
