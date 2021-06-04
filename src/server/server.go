@@ -117,7 +117,7 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 	})
 
 	s.OnError(func(conn sio.Conn, err error) {
-		logger.Error("socket.io on err: %v, id: %v", err, conn.ID())
+		logger.Error("socket.io on err: %v", err)
 	})
 
 	s.MountHandlers()
