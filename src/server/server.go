@@ -188,7 +188,6 @@ func (s *Server) SetNameSpace(nsp string) {
 
 //AcceptSession authentication for session
 func (s *Server) AcceptSession(session *Session) error {
-	logger.Info("%v try to get lock")
 	s.Lock()
 	logger.Info("Session.Accept Start. Session[%v]", session.ToString())
 	ok, err := s.Auth(session)
