@@ -7,6 +7,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"framework/api"
 	"framework/api/model"
 	"framework/cfgargs"
@@ -16,6 +17,7 @@ import (
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 func (s *Server) HandleInvoke(c *gin.Context) {
@@ -105,10 +107,23 @@ func (s *Server) ConsumeEvent(event *api.SingleInvokeRequest) {
 	s.HandleInvokeEvent(event.Target, event.Event, event.Data)
 }
 
-//func (s *Server) ListenChat() {
-//	if reflect.TypeOf(s.gateBroker).String() == reflect.TypeOf(&broker.GateBrokerHttp{}).String() {
-//		s.gateBroker.Listen(s.ListenChatHTTP())
-//	} else {
-//		logger.Debug("Gate.Listen HTTP Start Failed")
-//	}
-//}
+func (s *Server) DebugMapVars(c *gin.Context) {
+	sb := strings.Builder{}
+	sb.WriteString("SceneToSessions: \n{\n\n")
+	//SceneToSessionsString,_ := tool.PrettyPrint(s.SceneToSessions)
+	for key, sessions := range s.SceneToSessions {
+		tmp := strings.Builder{}
+		tmp.WriteString("[")
+		for _, session := range sessions {
+			tmp.WriteString(fmt.Sprintf("[%v],", session.ToString()))
+		}
+		tmp.WriteString("]\n")
+		sb.WriteString(fmt.Sprintf("  %v: %v\n", key, tmp.String()))
+	}
+	sb.WriteString("}\nSocketIOToSessions: \n{\n\n")
+	for key, session := range s.SocketIOToSessions {
+		sb.WriteString(fmt.Sprintf("  %v: %v\n\n", key, session.ToString()))
+	}
+	sb.WriteString("}\n")
+	c.String(http.StatusOK, sb.String())
+}

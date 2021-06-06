@@ -17,6 +17,7 @@ import (
 )
 
 type Server struct {
+	cfg                *cfgargs.SrvConfig
 	sioSrv             *sio.Server
 	httpSrv            *http.Server
 	offlineMessages    map[string][]*model.ChatMessage
@@ -68,6 +69,9 @@ func (s *Server) MountHandlers() {
 	routers := []*myhttp.Route{
 		myhttp.NewRoute(api.HTTPMethodPost, "", s.HandleInvoke),
 	}
+	if !s.cfg.HTTP.Release {
+		routers = append(routers, myhttp.NewRoute(api.HTTPMethodGet, "debug/maps", s.DebugMapVars))
+	}
 	node := myhttp.NewNodeRoute(path, routers...)
 	s.gateBroker.(*broker.GateBrokerHttp).AddNodeRoute(node)
 
@@ -77,6 +81,7 @@ func (s *Server) MountHandlers() {
 }
 
 func (s *Server) Init(cfg *cfgargs.SrvConfig) {
+	s.cfg = cfg
 	// rpc by http
 	if cfg.Logic.Mode == "http" {
 		s.gateBroker = broker.NewGateBrokerHttp()
@@ -220,10 +225,17 @@ func (s *Server) DisconnectSession(conn sio.Conn) *Session {
 	}
 
 	if nil != si {
-		siScene, ok := s.SceneToSessions[si.scene]
-		if ok || nil != siScene {
+		sessions, ok := s.SceneToSessions[si.scene]
+		if ok || nil != sessions {
 			logger.Info("Sessions.DisconnectSession, Scene:%v", si.scene)
-			delete(s.SceneToSessions, si.scene)
+			//delete(s.SceneToSessions, si.si)
+			newSessions := make([]*Session, 0, len(sessions))
+			for _, si := range sessions {
+				if si.GetID() != conn.ID() {
+					newSessions = append(newSessions, si)
+				}
+			}
+			s.SceneToSessions[si.scene] = newSessions
 		}
 	}
 
