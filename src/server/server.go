@@ -25,7 +25,7 @@ type Server struct {
 	handlers           map[string]interface{}
 	SocketIOToSessions map[string]*Session
 	//UIDSceneToSessions map[string]*Session
-	SceneToSessions map[string]*Session
+	SceneToSessions map[string][]*Session
 	eventQueue      chan *api.SingleInvokeRequest
 	sync.Mutex
 }
@@ -42,7 +42,7 @@ func NewServer() *Server {
 		offlineMessages:    make(map[string][]*model.ChatMessage),
 		SocketIOToSessions: make(map[string]*Session),
 		//UIDSceneToSessions: make(map[string]*Session),
-		SceneToSessions: make(map[string]*Session),
+		SceneToSessions: make(map[string][]*Session),
 		eventQueue:      make(chan *api.SingleInvokeRequest, 5000),
 	}
 	return s
@@ -197,7 +197,13 @@ func (s *Server) AcceptSession(session *Session) error {
 		return err
 	}
 	s.SocketIOToSessions[session.GetID()] = session
-	s.SceneToSessions[session.scene] = session
+	sessions, ok := s.SceneToSessions[session.scene]
+	if !ok {
+		s.SceneToSessions[session.scene] = []*Session{session}
+	} else {
+		sessions = append(sessions, session)
+		s.SceneToSessions[session.scene] = sessions
+	}
 	s.Unlock()
 	//logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 	logger.Info("Session.Accept Done. Session[%v]", session.ToString())

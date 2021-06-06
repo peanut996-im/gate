@@ -7,7 +7,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"framework/api"
 	"framework/api/model"
 	"framework/cfgargs"
@@ -37,14 +36,17 @@ func (s *Server) HandleInvoke(c *gin.Context) {
 func (s *Server) HandleInvokeEvent(scene, event string, data interface{}) {
 	// TODO multiply lock race.
 	s.Lock()
-	si, ok := s.SceneToSessions[scene]
+	sessions, ok := s.SceneToSessions[scene]
 	if !ok {
 		logger.Info("Gate.HandleInvokeEvent Scene offline. Event: %v, Scene: %v", event, scene)
 		s.Unlock()
 		return
 	}
 	s.Unlock()
-	si.Push(event, data)
+	for _, si := range sessions {
+		go si.Push(event, data)
+	}
+
 }
 
 func (s *Server) SocketEventHandler(event string) interface{} {
@@ -110,68 +112,3 @@ func (s *Server) ConsumeEvent(event *api.SingleInvokeRequest) {
 //		logger.Debug("Gate.Listen HTTP Start Failed")
 //	}
 //}
-
-func (s *Server) ListenChatHTTP() interface{} {
-	return func(c *gin.Context) {
-		logger.Info("Gate.PushChat from Logic")
-		pCR := &api.PushChatRequest{}
-		err := c.BindJSON(pCR)
-		if err != nil {
-			logger.Error("Gate.Chat PushChat "+api.UnmarshalJsonError, err)
-			c.AbortWithStatusJSON(http.StatusOK, api.NewHttpInnerErrorResponse(err))
-			return
-		}
-		scene := pCR.Target
-		s.Lock()
-		si, ok := s.SceneToSessions[scene]
-		if ok {
-			//online
-			logger.Info("Gate.ListenChat Session Online  \n[%v]", si.ToString())
-			si.Push(api.EventChat, pCR.Message)
-		} else {
-			//offline
-			logger.Info("Gate.ListenChat Session Offline")
-			messages, ok := s.offlineMessages[scene]
-			if !ok {
-				messages = make([]*model.ChatMessage, 0)
-			}
-			messages = append(messages, pCR.Message)
-			s.offlineMessages[scene] = messages
-			logger.Debug("%+v", s.offlineMessages[scene])
-			logger.Info("Gate.ListenChat Save Message Success. ")
-		}
-		s.Unlock()
-		c.JSON(http.StatusOK, api.NewSuccessResponse(nil))
-	}
-}
-
-func (s *Server) PushOfflineMessage(session *Session) {
-	//logger.Info("Gate.PushOfflineMessage Start[%v]", session.ToString())
-	s.Lock()
-	messages, ok := s.offlineMessages[session.GetScene()]
-	if ok {
-		//logger.Info("Gate.PushOfflineMessage to session[%v]", session.ToString())
-		for _, message := range messages {
-			session.Push(api.EventChat, message)
-		}
-		delete(s.offlineMessages, session.GetScene())
-	} else {
-		//logger.Info("Gate.PushOfflineMessage No offline Message to session[%v]", session.ToString())
-	}
-	s.Unlock()
-	//logger.Info("Gate.PushOfflineMessage Done. Session[%v]", session.ToString())
-
-}
-
-func (s *Server) Debug(c *gin.Context) {
-	res := "SocketIOToSessions:\n{\n"
-	for socket, session := range s.SocketIOToSessions {
-		res += fmt.Sprintf("    socket.id: %v, sesssion: %v\n", socket, session.ToString())
-	}
-	res += "}\nSceneToSessions:\n{\n"
-	for scene, session := range s.SceneToSessions {
-		res += fmt.Sprintf("    scene: %v, sesssion: %v\n", scene, session.ToString())
-	}
-	res += "}\n"
-	c.String(http.StatusOK, res)
-}
