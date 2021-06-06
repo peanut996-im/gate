@@ -11,6 +11,7 @@ import (
 	myhttp "framework/net/http"
 	sio "github.com/googollee/go-socket.io"
 	"net/http"
+	_ "net/http/pprof"
 	"sync"
 	"time"
 )
