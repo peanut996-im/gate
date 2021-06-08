@@ -63,6 +63,7 @@ func (s *Server) MountHandlers() {
 	s.handlers[api.EventInviteFriend] = s.SocketEventHandler(api.EventInviteFriend)
 	s.handlers[api.EventPullMessage] = s.SocketEventHandler(api.EventPullMessage)
 	s.handlers[api.EventUpdateUser] = s.SocketEventHandler(api.EventUpdateUser)
+	s.handlers[api.EventUpdateGroup] = s.SocketEventHandler(api.EventUpdateGroup)
 
 	//gatebroker http handler
 	path := ""
