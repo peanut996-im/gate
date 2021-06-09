@@ -115,12 +115,30 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 			time.Sleep(2 * time.Second)
 			//s.PushOfflineMessage(si)
 		}()
+		defer func() {
+			s.Lock()
+			scenes := []string{}
+			for scene := range s.SceneToSessions {
+				scenes = append(scenes, scene)
+			}
+			s.gateBroker.Update(scenes)
+			s.Unlock()
+		}()
 		return nil
 	})
 
 	s.OnDisconnect(func(conn sio.Conn, message string) {
 		logger.Info("socket.io disconnected, socket id :%v", conn.ID())
 		s.DisconnectSession(conn)
+		defer func() {
+			s.Lock()
+			scenes := []string{}
+			for scene := range s.SceneToSessions {
+				scenes = append(scenes, scene)
+			}
+			s.gateBroker.Update(scenes)
+			s.Unlock()
+		}()
 	})
 
 	s.OnError(func(conn sio.Conn, err error) {
@@ -133,6 +151,10 @@ func (s *Server) Init(cfg *cfgargs.SrvConfig) {
 }
 
 func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
+	err := s.gateBroker.Register()
+	if err != nil {
+		panic(err)
+	}
 	go s.gateBroker.Listen()
 	go s.Consume(s.ConsumeEvent)
 	defer func(srv *sio.Server) {
@@ -171,7 +193,7 @@ func (s *Server) Run(cfg *cfgargs.SrvConfig) error {
 	addr := fmt.Sprintf(":%v", cfg.SocketIO.Port)
 	logger.Info("Listening and serving Socket.IO on :%v", addr)
 
-	err := http.ListenAndServe(addr, nil)
+	err = http.ListenAndServe(addr, nil)
 	logger.Fatal("Listening and serving Socket.IO at %v... err:%v", addr, err)
 	return err
 }
@@ -211,6 +233,7 @@ func (s *Server) AcceptSession(session *Session) error {
 		s.SceneToSessions[session.scene] = sessions
 	}
 	s.Unlock()
+
 	//logger.Info("Session.Accept succeed, session:[%v]", session.ToString())
 	logger.Info("Session.Accept Done. Session[%v]", session.ToString())
 	return nil
